@@ -1,0 +1,181 @@
+function [T,Y,Species_Order,Reaction_Order,Y_eps] = TOY(kinetics_file,species_file,T,M,hold_fixed,length_of_run)
+%TOY.m
+%A Simple shell for a box model that you manually put reactions in to.
+%Should I allow a relaxed spin up rate? Who knows. 
+%% First use the provided kinetics and species to build up the framework for this run 
+run(kinetics_file)
+
+all_rxns = who('r_*');
+num_rxns = numel(all_rxns);
+Rxn_Data = struct([]);
+for nInd = 1:num_rxns
+    curr_rxn = all_rxns{nInd};
+    Rxn_Data(1).(curr_rxn) = eval(curr_rxn);
+end
+
+Species_Order = Build_Species_List(Rxn_Data);
+
+
+[Reaction_Order k_cell] = Build_Reaction_Order(Rxn_Data);
+[G, G1, G2] = Build_Stoichometry(Rxn_Data,Reaction_Order,Species_Order);
+SO = Species_Order;
+num_species = numel(fieldnames(Species_Order));
+
+    
+clear('-regexp', '^r_*');
+k_vector = zeros(num_rxns,1);
+for rInd = 1:numel(k_cell)
+    k_vector(rInd) = eval(k_cell{rInd});
+end
+
+disp('Loaded Reactions');
+
+
+%% Then use the species file to build up the concentrations. We recognize ppb_, ppt_
+% and m_
+
+c_vector =  zeros(num_species,1);
+run(species_file)
+
+
+all_ppb = who('ppb_*');
+for cInd = 1:numel(all_ppb)
+    curr_sf = all_ppb{cInd};
+    und = strfind(curr_sf,'_');
+    curr_species_name = curr_sf(und+1:end);
+    if ~isfield(Species_Order,curr_species_name)
+        continue
+    end
+    curr_order = Species_Order.(curr_species_name);    
+    q = eval(curr_sf);
+    c_vector(curr_order) = q.*2.45e10;
+end
+clear all_ppb
+clear('-regexp', '^ppb_*');
+
+
+all_ppt = who('ppt_*');
+for cInd = 1:numel(all_ppt)
+    curr_sf = all_ppt{cInd};
+    und = strfind(curr_sf,'_');
+    curr_species_name = curr_sf(und+1:end);
+    if ~isfield(Species_Order,curr_species_name)
+        continue
+    end
+    curr_order = Species_Order.(curr_species_name);
+    q = eval(curr_sf);
+    c_vector(curr_order) = q./1000.*2.45e10;
+end
+clear all_ppt
+clear('-regexp', '^ppt_*');
+
+
+all_m = who('m_*');
+for cInd = 1:numel(all_m)
+    curr_sf = all_m{cInd};
+    und = strfind(curr_sf,'_');
+    curr_species_name = curr_sf(und+1:end);
+    if ~isfield(Species_Order,curr_species_name)
+        continue
+    end
+    curr_order = Species_Order.(curr_species_name);
+    q = eval(curr_sf);
+    c_vector(curr_order) = q;
+end
+clear all_m
+clear('-regexp', '^m_*');
+disp('Loaded Species');
+if ~exist('want_to_plot','var')
+    want_to_plot = fieldnames(Species_Order);
+end
+want_to_plot = want_to_plot(isfield(Species_Order,want_to_plot));
+
+
+%% Now do the last manipulations needs to run the system
+C = c_vector;
+able_to_change = ones(numel(C),1);
+for hfInd = 1:numel(hold_fixed)
+    curr_species = hold_fixed{hfInd};
+    csInd = Species_Order.(curr_species);
+    able_to_change(csInd) = 0;
+end
+Co = zeros(num_species + num_rxns,1);
+Co(1:num_species) =  C;
+%%
+%Now do the actual run of the differential equation. We use ode15s, even
+%though it's slightly less accurate because it is faster. I currently don't
+%have any sort of instantaneous cutoff thing. Maybe that's for the future.
+disp('Starting to run the diffeq');
+[T,Y_both] = ode15s(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,able_to_change),...
+    [0, 3600*length_of_run],Co);
+Y_eps = Y_both(:,num_species+1:end);
+Y = Y_both(:,1:num_species);
+%%
+%Now we plot the results over time. 
+a = 17;
+plot_mask = zeros(1,num_species)
+for wtpInd = 1:numel(want_to_plot)
+    plot_mask(Species_Order.(want_to_plot{wtpInd})) = true;
+end
+plot_mask = plot_mask & max(Y) > 0;
+time_mask = T>5; %We give it 5 seconds to spin up :P
+plot(T(time_mask),log10(Y(time_mask,plot_mask)));
+set(gca,'FontSize',18);
+xlabel('Time(s)'); ylabel('log10(C/molec/cc');
+sn = fieldnames(Species_Order)
+sn = strrep(sn,'_',' ');
+legend(sn(plot_mask),'FontSize',14,'location','EastOutside');
+
+%Now we plot the sub-classes of things that are relevant to us
+for sbcInd = 1:numel(classes_of_interest)
+    curr_spec = classes_of_interest(sbcInd).comp;
+    plot_mask = zeros(1,num_species);
+    for wtpInd = 1:numel(curr_spec)
+        if ~isfield(Species_Order,curr_spec{wtpInd}), continue; end
+        plot_mask(Species_Order.(curr_spec{wtpInd})) = true;
+    end
+    plot_mask = plot_mask & max(Y) > 0;
+    curr_name = classes_of_interest(sbcInd).name;
+    figure;
+    plot(T(time_mask),Y(time_mask,plot_mask));
+    hold on;
+    conserved_sum = sum(Y(time_mask,plot_mask),2);
+    plot(T(time_mask),conserved_sum,'-r*');
+    set(gca,'FontSize',18);
+    xlabel('Time(s)'); ylabel('log10(C/molec/cc');
+    title(curr_name);
+    legend(sn(plot_mask),'FontSize',14,'location','EastOutside');
+end
+
+%Now we plot the epsilons:
+integrated_throughput = sum(Y_eps,1);
+cumul_throughput = cumsum(Y_eps,1);
+[C,IX] = sort(integrated_throughput,'descend');
+figure;
+plot(T,cumul_throughput(:,IX))
+all_names = fieldnames(Reaction_Order);
+all_names = strrep(all_names,'_',' ');
+legend(all_names(IX),'Fontsize',14,'location','EastOutside')
+%%
+%Now we clean up and save
+clear cInd csInd curr_order curr_rxn curr_sf curr_species curr_species_name
+clear hfInd k_vector nInd num_rxns num_species q rInd und SO
+
+dir_root = datestr(datevec(now),'yymmdd');
+curr_dir = pwd;
+cd ./Toy_runs/
+if ~exist(dir_root,'dir')
+    mkdir(dir_root)
+end
+cd(dir_root)
+run_suff = 0;
+run_name = strcat(dir_root,'_',sprintf('%02i',run_suff),'.mat');
+while exist(run_name,'file')
+    run_suff = run_suff + 1;
+    run_name = strcat(dir_root,'_',sprintf('%02i',run_suff),'.mat');
+end
+save(run_name)
+cd(curr_dir);
+
+
+a = 17; 
