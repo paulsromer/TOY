@@ -1,8 +1,12 @@
-function [T,Y,Species_Order,Reaction_Order,Y_eps] = TOY(kinetics_file,species_file,T,M,hold_fixed,length_of_run)
+function [T,Y,Species_Order,Reaction_Order,Y_eps] = TOY(kinetics_file,species_file,T,M,hold_fixed,length_of_run,is_RO2)
 %TOY.m
 %A Simple shell for a box model that you manually put reactions in to.
 %Should I allow a relaxed spin up rate? Who knows. 
 %% First use the provided kinetics and species to build up the framework for this run 
+if ~exist('is_RO2','var')
+    is_RO2 = {};
+end
+
 run(kinetics_file)
 
 all_rxns = who('r_*');
@@ -14,7 +18,10 @@ for nInd = 1:num_rxns
 end
 
 Species_Order = Build_Species_List(Rxn_Data);
-
+if ~isfield(Species_Order,'RO2')
+    x = numel(fieldnames(Species_Order)) + 1;
+    Species_Order.RO2 = x;
+end
 
 [Reaction_Order k_cell] = Build_Reaction_Order(Rxn_Data);
 [G, G1, G2] = Build_Stoichometry(Rxn_Data,Reaction_Order,Species_Order);
@@ -94,20 +101,44 @@ want_to_plot = want_to_plot(isfield(Species_Order,want_to_plot));
 %% Now do the last manipulations needs to run the system
 C = c_vector;
 able_to_change = ones(numel(C),1);
+all_able_to_change = able_to_change;
 for hfInd = 1:numel(hold_fixed)
     curr_species = hold_fixed{hfInd};
     csInd = Species_Order.(curr_species);
     able_to_change(csInd) = 0;
 end
+
+    
+
+
+is_RO2_vector = zeros(numel(C),1);
+for irInd = 1:numel(is_RO2)
+    curr_species = is_RO2{irInd};
+    csInd = Species_Order.(curr_species);
+    is_RO2_vector(csInd) = 1;
+end
+is_RO2_vector = logical(is_RO2_vector);
+
+RO2_ind = Species_Order.('RO2')
+C(RO2_ind) = sum(C(is_RO2_vector));
 Co = zeros(num_species + num_rxns,1);
 Co(1:num_species) =  C;
+
+
 %%
 %Now do the actual run of the differential equation. We use ode15s, even
 %though it's slightly less accurate because it is faster. I currently don't
 %have any sort of instantaneous cutoff thing. Maybe that's for the future.
+disp('Five Minute Spin Up');
+[a,b] = ode45(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,all_able_to_change,is_RO2_vector,RO2_ind),...
+    [0, 5*60],Co);
+Co(1:num_species) = b(end,1:num_species);
 disp('Starting to run the diffeq');
 [T,Y_both] = ode15s(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,able_to_change),...
     [0, 3600*length_of_run],Co);
+q = T+5*60;
+T = [a; q];
+Y_both = [b; Y_both];
 Y_eps = Y_both(:,num_species+1:end);
 Y = Y_both(:,1:num_species);
 %%

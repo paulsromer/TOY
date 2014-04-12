@@ -1,12 +1,12 @@
 
 %This is the initalization routine for this thing. Builds some
 %structures. k will have be calculated on every call. 
-ppb_NO = 80/1000;
-ppb_O3 = 30;
+ppb_NO = 50/1000;
+ppb_O3 = 38;
 ppb_HO2 = 60/1000;
-ppb_ISOP = 8;
-ppb_OH = .1/1000; %I think this is correct. 
-ppb_NO2 = 600/1000;
+ppb_ISOP = 6;
+ppb_OH = .08/1000; %I think this is correct. 
+ppb_NO2 = 250/1000;
 ppb_OVOC = 2;
 
 want_to_plot = {'NO','NO2','O3','OH','HO2','ISOP','OVOC','ISOPOOH','AN'};
