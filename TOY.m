@@ -1,11 +1,9 @@
-function [T,Y,Species_Order,Reaction_Order,Y_eps] = TOY(kinetics_file,species_file,T,M,hold_fixed,length_of_run,is_RO2)
+function [T,Y,Species_Order,Reaction_Order,Y_eps, S] = TOY(kinetics_file,species_file,T,M,hold_fixed,length_of_run,ode_runner)
 %TOY.m
 %A Simple shell for a box model that you manually put reactions in to.
 %Should I allow a relaxed spin up rate? Who knows. 
 %% First use the provided kinetics and species to build up the framework for this run 
-if ~exist('is_RO2','var')
-    is_RO2 = {};
-end
+
 
 run(kinetics_file)
 
@@ -42,8 +40,11 @@ disp('Loaded Reactions');
 % and m_
 
 c_vector =  zeros(num_species,1);
-run(species_file)
-
+if isstruct(species_file)
+    Extract_Struct(species_file)
+else
+    run(species_file)
+end
 
 all_ppb = who('ppb_*');
 for cInd = 1:numel(all_ppb)
@@ -108,7 +109,10 @@ for hfInd = 1:numel(hold_fixed)
     able_to_change(csInd) = 0;
 end
 
-    
+
+if ~exist('is_RO2','var')
+    is_RO2 = {};
+end
 
 
 is_RO2_vector = zeros(numel(C),1);
@@ -119,7 +123,7 @@ for irInd = 1:numel(is_RO2)
 end
 is_RO2_vector = logical(is_RO2_vector);
 
-RO2_ind = Species_Order.('RO2')
+RO2_ind = Species_Order.('RO2');
 C(RO2_ind) = sum(C(is_RO2_vector));
 Co = zeros(num_species + num_rxns,1);
 Co(1:num_species) =  C;
@@ -129,31 +133,38 @@ Co(1:num_species) =  C;
 %Now do the actual run of the differential equation. We use ode15s, even
 %though it's slightly less accurate because it is faster. I currently don't
 %have any sort of instantaneous cutoff thing. Maybe that's for the future.
-disp('Five Minute Spin Up');
-[a,b] = ode45(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,all_able_to_change,is_RO2_vector,RO2_ind),...
-    [0, 5*60],Co);
-Co(1:num_species) = b(end,1:num_species);
+% disp('Five Minute Spin Up');
+% [a,b] = ode45(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,all_able_to_change,is_RO2_vector,RO2_ind),...
+%     [0, 5*60],Co);
+% Co(1:num_species) = b(end,1:num_species);
 disp('Starting to run the diffeq');
-[T,Y_both] = ode15s(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,able_to_change),...
-    [0, 3600*length_of_run],Co);
+tic
+if strcmp(ode_runner,'ode45')
+    disp('Using ode45. May be slow');
+    [T,Y_both] = ode45(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind),...
+        [0, 3600*length_of_run],Co); %I'm going to regret this, aren't I?
+else
+    [T,Y_both] = ode15s(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind),...
+        [0, 3600*length_of_run],Co); %I'm going to regret this, aren't I?
+end
 q = T+5*60;
-T = [a; q];
-Y_both = [b; Y_both];
+%T = [a; q];
+%Y_both = [b; Y_both];
 Y_eps = Y_both(:,num_species+1:end);
 Y = Y_both(:,1:num_species);
 %%
 %Now we plot the results over time. 
 a = 17;
-plot_mask = zeros(1,num_species)
+plot_mask = zeros(1,num_species);
 for wtpInd = 1:numel(want_to_plot)
     plot_mask(Species_Order.(want_to_plot{wtpInd})) = true;
 end
-plot_mask = plot_mask & max(Y) > 0;
+plot_mask = plot_mask & max(Y) >= 0;
 time_mask = T>5; %We give it 5 seconds to spin up :P
-plot(T(time_mask),log10(Y(time_mask,plot_mask)));
+plot(T(time_mask),Y(time_mask,plot_mask));
 set(gca,'FontSize',18);
-xlabel('Time(s)'); ylabel('log10(C/molec/cc');
-sn = fieldnames(Species_Order)
+xlabel('Time(s)'); ylabel('C molec/cc');
+sn = fieldnames(Species_Order);
 sn = strrep(sn,'_',' ');
 legend(sn(plot_mask),'FontSize',14,'location','EastOutside');
 
@@ -165,15 +176,21 @@ for sbcInd = 1:numel(classes_of_interest)
         if ~isfield(Species_Order,curr_spec{wtpInd}), continue; end
         plot_mask(Species_Order.(curr_spec{wtpInd})) = true;
     end
-    plot_mask = plot_mask & max(Y) > 0;
+    if sum(plot_mask & max(Y) > 0) > 0    
+        plot_mask = plot_mask & max(Y) > 0;
+    else
+        plot_mask = plot_mask & max(Y) >= 0;
+    end
     curr_name = classes_of_interest(sbcInd).name;
     figure;
     plot(T(time_mask),Y(time_mask,plot_mask));
     hold on;
     conserved_sum = sum(Y(time_mask,plot_mask),2);
-    plot(T(time_mask),conserved_sum,'-r*');
+    if sum(plot_mask) > 1
+        plot(T(time_mask),conserved_sum,'-r*');
+    end
     set(gca,'FontSize',18);
-    xlabel('Time(s)'); ylabel('log10(C/molec/cc');
+    xlabel('Time(s)'); ylabel('C (molec/cc)');
     title(curr_name);
     legend(sn(plot_mask),'FontSize',14,'location','EastOutside');
 end
@@ -181,7 +198,7 @@ end
 %Now we plot the epsilons:
 integrated_throughput = sum(Y_eps,1);
 cumul_throughput = cumsum(Y_eps,1);
-[C,IX] = sort(integrated_throughput,'descend');
+[c,IX] = sort(integrated_throughput,'descend');
 figure;
 plot(T,cumul_throughput(:,IX))
 all_names = fieldnames(Reaction_Order);
@@ -208,5 +225,12 @@ end
 save(run_name)
 cd(curr_dir);
 
-
+q = fieldnames(Species_Order);
+S = struct();
+for ind = 1:numel(q)
+    curr_name = q{ind};
+    curr_ind = Species_Order.(curr_name);
+    S.(curr_name) = Y(:,curr_ind);
+end
+    
 a = 17; 

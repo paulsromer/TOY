@@ -8,6 +8,7 @@ eps = k_vector.*(G1*C_forG12).*(G2*C_forG12);
 delta_C = G*eps;
 delta_C(1:num_species) = delta_C(1:num_species).*able_to_change;
 delta_C(RO2_ind) = sum(delta_C(is_RO2));
+delta_C;
 % if t > 3600*2
 %     a = 17;
 % end
