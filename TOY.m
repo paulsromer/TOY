@@ -1,8 +1,31 @@
-function [T,Y,Species_Order,Reaction_Order,Y_eps, S] = TOY(kinetics_file,species_file,T,M,hold_fixed,length_of_run,ode_runner)
+function [T,Y,Species_Order,Reaction_Order,Y_eps, S] = TOY(kinetics_file,species_file,other_inputs,hold_fixed,length_of_run,ode_runner)
 %TOY.m
-%A Simple shell for a box model that you manually put reactions in to.
-%Should I allow a relaxed spin up rate? Who knows. 
+%A Simple shell for a box model that you manually put reactions into.
+% INPUTS:
+% kinetics_file: A .m file with reactions entered - this is where the
+%   kinetics for the model run are stored. 
+% species_file: Either a .m file, or a structure, with starting
+%   concentrations
+% other_inputs: A structure with any other variables necessary to evalute
+%   the rate constants. This includes T, mM, and also possibly like TUV
+%   things. 
+% hold_fixed: A cell array of species that should be held at fixed
+%   concentrations 
+% length_of_run: time to run the model for, in hours
+% ode_runner: What matlab should use to run the model. Current options are
+%   ode45(slow and accurate) and ode15s(fast and less accurate)
+
+%Names that are not allowed to be used in other_inputs:
+forbidden_names = {'r_.*','all_rxns','curr_rxn','G','G1','G2','hold_fixed',...
+    'k_cell','k_vector','kinetics_file','length_of_run','nInd','num_rxns',...
+    'num_species','ode_runner','Reaction_Order','rInd','Rxn_Data','SO',...
+    'species_file','Species_Order','x','ppb_.*','ppt_.*','m_.*'};
+for ind = 1:numel(forbidden_names)
+    forbidden_names{ind} = strcat('^',forbidden_names{ind},'$');
+end
+
 %% First use the provided kinetics and species to build up the framework for this run 
+
 
 
 run(kinetics_file)
@@ -28,9 +51,20 @@ num_species = numel(fieldnames(Species_Order));
 
     
 clear('-regexp', '^r_*');
+%We need to unpack other_inputs to evaluate the k_vectors. So I unpack it,
+%evaluate the k's, and then destroy it, just to cut down on the total mess
+%that this system can make:
+var_names = Extract_Struct(other_inputs,forbidden_names);
+
+%now evaluate the k's
 k_vector = zeros(num_rxns,1);
 for rInd = 1:numel(k_cell)
     k_vector(rInd) = eval(k_cell{rInd});
+end
+%Clean up:
+clear curr_rxn nInd rInd k_cell
+for ind = 1:numel(var_names)
+    clear(var_names{ind});
 end
 
 disp('Loaded Reactions');
