@@ -1,4 +1,4 @@
-function [T,Y,Species_Order,Reaction_Order,Y_eps, S] = TOY(kinetics_file,species_file,other_inputs,hold_fixed,length_of_run,ode_runner)
+function [T,Y,Species_Order,Reaction_Order,Y_eps, S] = TOY(kinetics_file,species_struct,other_inputs,hold_fixed,length_of_run,ode_runner)
 %TOY.m
 %A Simple shell for a box model that you manually put reactions into.
 % INPUTS:
@@ -23,6 +23,11 @@ forbidden_names = {'r_.*','all_rxns','curr_rxn','G','G1','G2','hold_fixed',...
 for ind = 1:numel(forbidden_names)
     forbidden_names{ind} = strcat('^',forbidden_names{ind},'$');
 end
+
+
+%% Zeroth: Do a size check on these things
+%Things that can be vectors: species_file, other_inputs, length_of_run
+vector_size = nan;
 
 %% First use the provided kinetics and species to build up the framework for this run 
 
@@ -76,6 +81,12 @@ end
 %Clean up:
 clear curr_rxn nInd rInd k_cell
 for ind = 1:numel(var_names)
+    if strcmp(var_names{ind},'mM')
+        continue
+    end
+    if strcmp(var_names{ind},'T');
+        continue
+    end
     clear(var_names{ind});
 end
 
@@ -85,12 +96,13 @@ disp('Loaded Reactions');
 %% Then use the species file to build up the concentrations. We recognize ppb_, ppt_
 % and m_
 
-c_vector =  zeros(num_species,1);
-if isstruct(species_file)
-    Extract_Struct(species_file)
-else
-    run(species_file)
+if ~exist('mM','var')
+    mM = 2.45e10;
 end
+
+c_vector =  zeros(num_species,1);
+Extract_Struct(species_struct)
+
 
 all_ppb = who('ppb_*');
 for cInd = 1:numel(all_ppb)
