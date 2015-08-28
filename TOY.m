@@ -1,4 +1,4 @@
-function [T,Y,Species_Order,Reaction_Order,Y_eps, S] = TOY(kinetics_file,species_struct,other_inputs,hold_fixed,length_of_run,ode_runner)
+function [T_all,Y,Species_Order,Reaction_Order,Y_eps, S] = TOY(kinetics_file,species_struct,other_inputs,hold_fixed,length_of_run,options)
 %TOY.m
 %A Simple shell for a box model that you manually put reactions into.
 % INPUTS:
@@ -18,16 +18,47 @@ function [T,Y,Species_Order,Reaction_Order,Y_eps, S] = TOY(kinetics_file,species
 %Names that are not allowed to be used in other_inputs:
 forbidden_names = {'r_.*','all_rxns','curr_rxn','G','G1','G2','hold_fixed',...
     'k_cell','k_vector','kinetics_file','length_of_run','nInd','num_rxns',...
-    'num_species','ode_runner','Reaction_Order','rInd','Rxn_Data','SO',...
-    'species_file','Species_Order','x','ppb_.*','ppt_.*','m_.*'};
+    'num_species','runner','Reaction_Order','rInd','Rxn_Data','SO',...
+    'species_struct','Species_Order','x','ppb_.*','ppt_.*','m_.*','options'};
 for ind = 1:numel(forbidden_names)
     forbidden_names{ind} = strcat('^',forbidden_names{ind},'$');
 end
 
 
-%% Zeroth: Do a size check on these things
-%Things that can be vectors: species_file, other_inputs, length_of_run
+%% Zeroth: Unpack Options, and 
+
+allowed_names = {'runner','want_to_plot','classes_of_interest'};
+Extract_Struct(options,allowed_names,false);
+
+
+
+%Do a size check on these things
+%Things that can be vectors: species_struct, other_inputs, length_of_run
 vector_size = nan;
+[species_struct, do_sizes_match, vector_size] = Check_Struct_Size(species_struct,vector_size);
+if ~do_sizes_match
+    disp('Error when processing species_struct - some vectors are different lengths');
+end
+[other_inputs, do_sizes_match, vector_size] = Check_Struct_Size(other_inputs,vector_size);
+if ~do_sizes_match
+    disp('Error when processing other_inputs - some vectors are different lengths');
+end
+q = struct('length_of_run',length_of_run);
+[~, do_sizes_match, vector_size] = Check_Struct_Size(q,vector_size);
+if ~do_sizes_match
+    disp('Error when processing length_of_run - some vectors are different lengths');
+end
+
+if isnan(vector_size)
+    vector_size = 1;
+end
+    
+%Now we are just going to make everything the same size:
+species_struct = Pad_Struct(species_struct,vector_size);
+other_inputs = Pad_Struct(other_inputs,vector_size);
+length_of_run = repmat(length_of_run./vector_size,1,vector_size);
+a = 17;  
+    
 
 %% First use the provided kinetics and species to build up the framework for this run 
 
@@ -67,19 +98,29 @@ SO = Species_Order;
 num_species = numel(fieldnames(Species_Order));
 
     
-clear('-regexp', '^r_*');
+clear('-regexp', '^r_.*');
 %We need to unpack other_inputs to evaluate the k_vectors. So I unpack it,
 %evaluate the k's, and then destroy it, just to cut down on the total mess
 %that this system can make:
 var_names = Extract_Struct(other_inputs,forbidden_names);
+if ~exist('mM','var')
+    mM = 2.45e19;
+    disp('Using a default molecular density of air of 2.45e19 molec/cc');
+end
 
 %now evaluate the k's
-k_vector = zeros(num_rxns,1);
+%k_vector = zeros(num_rxns,1);
+k_matrix = zeros(num_rxns,vector_size);
 for rInd = 1:numel(k_cell)
-    k_vector(rInd) = eval(k_cell{rInd});
+    curr_data = eval(k_cell{rInd});
+    if numel(curr_data) == 1    
+        k_matrix(rInd,:) = repmat(curr_data,1,vector_size);
+    else
+        k_matrix(rInd,:) = curr_data;
+    end
 end
 %Clean up:
-clear curr_rxn nInd rInd k_cell
+clear curr_rxn nInd rInd k_cell curr_data
 for ind = 1:numel(var_names)
     if strcmp(var_names{ind},'mM')
         continue
@@ -100,9 +141,9 @@ if ~exist('mM','var')
     mM = 2.45e10;
 end
 
-c_vector =  zeros(num_species,1);
-Extract_Struct(species_struct)
-
+c_matrix =  zeros(num_species,vector_size);
+allowed_names = {'^ppb_','^ppt_','^m_','is_RO2'};
+Extract_Struct(species_struct,allowed_names,false)
 
 all_ppb = who('ppb_*');
 for cInd = 1:numel(all_ppb)
@@ -114,7 +155,7 @@ for cInd = 1:numel(all_ppb)
     end
     curr_order = Species_Order.(curr_species_name);    
     q = eval(curr_sf);
-    c_vector(curr_order) = q.*2.45e10;
+    c_matrix(curr_order,:) = q.*mM./1e9;
 end
 clear all_ppb
 clear('-regexp', '^ppb_*');
@@ -130,7 +171,7 @@ for cInd = 1:numel(all_ppt)
     end
     curr_order = Species_Order.(curr_species_name);
     q = eval(curr_sf);
-    c_vector(curr_order) = q./1000.*2.45e10;
+    c_matrix(curr_order,:) = q.*mM./1e12;
 end
 clear all_ppt
 clear('-regexp', '^ppt_*');
@@ -146,20 +187,20 @@ for cInd = 1:numel(all_m)
     end
     curr_order = Species_Order.(curr_species_name);
     q = eval(curr_sf);
-    c_vector(curr_order) = q;
+    c_matrix(curr_order,:) = q;
 end
 clear all_m
 clear('-regexp', '^m_*');
 disp('Loaded Species');
-if ~exist('want_to_plot','var')
+if ~exist('want_to_plot','var')%If want_to_plot is not a variable, want_to_plot just gets all the species
     want_to_plot = fieldnames(Species_Order);
 end
 want_to_plot = want_to_plot(isfield(Species_Order,want_to_plot));
 
 
-%% Now do the last manipulations needs to run the system
-C = c_vector;
-able_to_change = ones(numel(C),1);
+
+
+able_to_change = ones(size(c_matrix,1),1);
 all_able_to_change = able_to_change;
 for hfInd = 1:numel(hold_fixed)
     curr_species = hold_fixed{hfInd};
@@ -173,7 +214,7 @@ if ~exist('is_RO2','var')
 end
 
 
-is_RO2_vector = zeros(numel(C),1);
+is_RO2_vector = zeros(size(c_matrix,1),1);
 for irInd = 1:numel(is_RO2)
     curr_species = is_RO2{irInd};
     csInd = Species_Order.(curr_species);
@@ -182,34 +223,68 @@ end
 is_RO2_vector = logical(is_RO2_vector);
 
 RO2_ind = Species_Order.('RO2');
-C(RO2_ind) = sum(C(is_RO2_vector));
+c_matrix(RO2_ind,:) = sum(c_matrix(is_RO2_vector,:));
+
 Co = zeros(num_species + num_rxns,1);
-Co(1:num_species) =  C;
+Co(1:num_species) = c_matrix(:,1);
+
+%% This is where I am going to designate that we move back into vector form!
+Y = zeros(0,num_species);
+Y_eps = zeros(0,num_rxns);
+T_all = zeros(0,1);
+time_already_past = 0;
+yInd = 1;
+
+for vInd =1:vector_size
+    k_vector = k_matrix(:,vInd); %Ok, that's easy. 
+    
+    %c_vector = c_matrix(:,vInd);
+   
+    %Co = zeros(num_species + num_rxns,1);
+    %Co(1:num_species) =  C;
 
 
-%%
-%Now do the actual run of the differential equation. We use ode15s, even
-%though it's slightly less accurate because it is faster. I currently don't
-%have any sort of instantaneous cutoff thing. Maybe that's for the future.
-% disp('Five Minute Spin Up');
-% [a,b] = ode45(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,all_able_to_change,is_RO2_vector,RO2_ind),...
-%     [0, 5*60],Co);
-% Co(1:num_species) = b(end,1:num_species);
-disp('Starting to run the diffeq');
-tic
-if strcmp(ode_runner,'ode45')
-    disp('Using ode45. May be slow');
-    [T,Y_both] = ode45(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind),...
-        [0, 3600*length_of_run],Co); %I'm going to regret this, aren't I?
-else
-    [T,Y_both] = ode15s(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind),...
-        [0, 3600*length_of_run],Co); %I'm going to regret this, aren't I?
+    %%
+    %Now do the actual run of the differential equation. We use ode15s, even
+    %though it's slightly less accurate because it is faster. I currently don't
+    %have any sort of instantaneous cutoff thing. Maybe that's for the future.
+    % disp('Five Minute Spin Up');
+    % [a,b] = ode45(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,all_able_to_change,is_RO2_vector,RO2_ind),...
+    %     [0, 5*60],Co);
+    % Co(1:num_species) = b(end,1:num_species);
+    disp('Starting to run the diffeq');
+    
+    if strcmp(runner,'ode45')
+        disp('Using ode45. May be slow');
+        [T_curr,Y_curr] = ode45(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind),...
+            [0, 3600*length_of_run(vInd)],Co); %I'm going to regret this, aren't I?
+    else
+        [T_curr,Y_curr] = ode15s(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind),...
+            [0, 3600*length_of_run(vInd)],Co); %I'm going to regret this, aren't I?
+    end
+    q = T_curr+5*60;
+    %T = [a; q];
+    %Y_both = [b; Y_both];
+    
+    
+    %Now I need to do two things:
+    %1. Update was Co should be.
+    %2. Combine Y_both
+    Y_end = Y_curr(end,:)'; %These are the output concentrations
+    if vInd < vector_size %Don't do this the last time
+        new_Co = Y_end;
+        new_Co(able_to_change == 0) = c_matrix(able_to_change == 0, vInd+1); %only fix the ones that arne't able to change. 
+    end
+    
+    n_rows = size(Y_curr,1);
+    Y_eps(yInd:yInd+n_rows-1,:) = Y_curr(:,num_species+1:end);
+    Y(yInd:yInd+n_rows-1,:) = Y_curr(:,1:num_species);
+    T_all(yInd:yInd+n_rows-1) = T_curr + time_already_past;
+    
+    yInd = yInd+n_rows;
+    time_already_past = time_already_past + length_of_run(vInd)*3600;
+    
 end
-q = T+5*60;
-%T = [a; q];
-%Y_both = [b; Y_both];
-Y_eps = Y_both(:,num_species+1:end);
-Y = Y_both(:,1:num_species);
 %%
 %Now we plot the results over time. 
 a = 17;
@@ -218,8 +293,8 @@ for wtpInd = 1:numel(want_to_plot)
     plot_mask(Species_Order.(want_to_plot{wtpInd})) = true;
 end
 plot_mask = plot_mask & max(Y) >= 0;
-time_mask = T>5; %We give it 5 seconds to spin up :P
-plot(T(time_mask),Y(time_mask,plot_mask));
+time_mask = T_all>5; %We give it 5 seconds to spin up :P
+plot(T_all(time_mask),Y(time_mask,plot_mask));
 set(gca,'FontSize',18);
 xlabel('Time(s)'); ylabel('C molec/cc');
 sn = fieldnames(Species_Order);
@@ -227,6 +302,10 @@ sn = strrep(sn,'_',' ');
 legend(sn(plot_mask),'FontSize',14,'location','EastOutside');
 
 %Now we plot the sub-classes of things that are relevant to us
+if ~exist('classes_of_interest','var')
+    classes_of_interest = struct('name',{},'comp',{})
+end
+
 for sbcInd = 1:numel(classes_of_interest)
     curr_spec = classes_of_interest(sbcInd).comp;
     plot_mask = zeros(1,num_species);
@@ -241,11 +320,11 @@ for sbcInd = 1:numel(classes_of_interest)
     end
     curr_name = classes_of_interest(sbcInd).name;
     figure;
-    plot(T(time_mask),Y(time_mask,plot_mask));
+    plot(T_all(time_mask),Y(time_mask,plot_mask));
     hold on;
     conserved_sum = sum(Y(time_mask,plot_mask),2);
     if sum(plot_mask) > 1
-        plot(T(time_mask),conserved_sum,'-r*');
+        plot(T_all(time_mask),conserved_sum,'-r*');
     end
     set(gca,'FontSize',18);
     xlabel('Time(s)'); ylabel('C (molec/cc)');
@@ -258,7 +337,7 @@ integrated_throughput = sum(Y_eps,1);
 cumul_throughput = cumsum(Y_eps,1);
 [c,IX] = sort(integrated_throughput,'descend');
 figure;
-plot(T,cumul_throughput(:,IX))
+plot(T_all,cumul_throughput(:,IX))
 all_names = fieldnames(Reaction_Order);
 all_names = strrep(all_names,'_',' ');
 legend(all_names(IX),'Fontsize',14,'location','EastOutside')
