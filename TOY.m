@@ -30,6 +30,18 @@ end
 
 run(kinetics_file)
 
+%Add in a section to translate my new reaction format into the old reaction
+%format
+all_new_rxns = who('r2_*');
+for nInd = 1:numel(all_new_rxns)
+    translated_rxn = Translate_Rxn_Inputs(eval(all_new_rxns{nInd}));
+    curr_name = all_new_rxns{nInd};
+    new_name = strcat('r_',curr_name(4:end));
+    str_to_eval = strcat(new_name,' = translated_rxn');
+    eval(str_to_eval);
+end
+clear('-regexp', '^r2_.*');
+
 all_rxns = who('r_*');
 num_rxns = numel(all_rxns);
 Rxn_Data = struct([]);
