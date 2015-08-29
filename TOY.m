@@ -1,4 +1,4 @@
-function [T_all,Y,Species_Order,Reaction_Order,Y_eps, S] = TOY(kinetics_file,species_struct,other_inputs,hold_fixed,length_of_run,options)
+function [T_all,Y,Species_Order,Reaction_Order,Y_eps, S, R] = TOY(kinetics_file,species_struct,other_inputs,hold_fixed,length_of_run,options)
 %TOY.m
 %A Simple shell for a box model that you manually put reactions into.
 % INPUTS:
@@ -73,7 +73,7 @@ for nInd = 1:numel(all_new_rxns)
     translated_rxn = Translate_Rxn_Inputs(eval(all_new_rxns{nInd}));
     curr_name = all_new_rxns{nInd};
     new_name = strcat('r_',curr_name(4:end));
-    str_to_eval = strcat(new_name,' = translated_rxn');
+    str_to_eval = strcat(new_name,' = translated_rxn;');
     eval(str_to_eval);
 end
 clear('-regexp', '^r2_.*');
@@ -93,6 +93,7 @@ if ~isfield(Species_Order,'RO2')
 end
 
 [Reaction_Order k_cell] = Build_Reaction_Order(Rxn_Data);
+
 [G, G1, G2] = Build_Stoichometry(Rxn_Data,Reaction_Order,Species_Order);
 SO = Species_Order;
 num_species = numel(fieldnames(Species_Order));
@@ -143,7 +144,7 @@ end
 
 c_matrix =  zeros(num_species,vector_size);
 allowed_names = {'^ppb_','^ppt_','^m_','is_RO2'};
-Extract_Struct(species_struct,allowed_names,false)
+Extract_Struct(species_struct,allowed_names,false);
 
 all_ppb = who('ppb_*');
 for cInd = 1:numel(all_ppb)
@@ -274,6 +275,7 @@ for vInd =1:vector_size
     if vInd < vector_size %Don't do this the last time
         new_Co = Y_end;
         new_Co(able_to_change == 0) = c_matrix(able_to_change == 0, vInd+1); %only fix the ones that arne't able to change. 
+        Co = new_Co;
     end
     
     n_rows = size(Y_curr,1);
@@ -303,7 +305,7 @@ legend(sn(plot_mask),'FontSize',14,'location','EastOutside');
 
 %Now we plot the sub-classes of things that are relevant to us
 if ~exist('classes_of_interest','var')
-    classes_of_interest = struct('name',{},'comp',{})
+    classes_of_interest = struct('name',{},'comp',{});
 end
 
 for sbcInd = 1:numel(classes_of_interest)
@@ -369,5 +371,14 @@ for ind = 1:numel(q)
     curr_ind = Species_Order.(curr_name);
     S.(curr_name) = Y(:,curr_ind);
 end
+
+q = fieldnames(Reaction_Order);
+R = struct();
+for ind = 1:numel(q)
+    curr_name = q{ind};
+    curr_ind = Reaction_Order.(curr_name);
+    R.(curr_name) = Y_eps(:,curr_ind);
+end
+
     
 a = 17; 

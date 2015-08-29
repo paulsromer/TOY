@@ -1,4 +1,4 @@
-function old_format_r = Translate_Rxn_Inputs(new_format_r)
+function old_format_r = Translate_Rxn_Inputs(new_format_r,starting_name)
 
 %%
 
@@ -30,18 +30,22 @@ old_format_r.ksource = new_format_r.ksource; %That's also easy
 %     'ksource','LIM1');
 
 
+
 return
 
 
 function [names, nums] = Process_Reaction_Side(scheme_input,is_reac)
     names = {};
-    nums = [];
+    nums = {};
     for rInd = 1:numel(scheme_input)
         curr_part = scheme_input{rInd};
+        if isempty(strtrim(curr_part))
+            continue
+        end
         i = strfind(curr_part,'*');
         if numel(i) == 0
             names = Cell_Append(names,strtrim(curr_part));
-            nums = [nums(:)', 1];
+            nums = Cell_Append(nums, 1);
         elseif numel(i) == 1
             C = strsplit(curr_part,'*');
             elem_name = C{2};
@@ -52,7 +56,7 @@ function [names, nums] = Process_Reaction_Side(scheme_input,is_reac)
                 error('Bad Inputs');
             else
                 names = Cell_Append(names,strtrim(elem_name));
-                nums = [nums(:)', elem_stoicheometry];
+                nums = Cell_Append(nums,elem_stoicheometry);
             end
         else
             disp('Can''t deal with multiple *''s in the reaction scheme')
