@@ -70,8 +70,15 @@ a = 17;
 %% First use the provided kinetics and species to build up the framework for this run 
 
 
-
-run(kinetics_file)
+a = 17;
+if iscell(kinetics_file)
+    for ind = 1:numel(kinetics_file)
+        curr_file = kinetics_file{ind};
+        run(curr_file);
+    end
+else
+    run(kinetics_file)
+end
 
 %Add in a section to translate my new reaction format into the old reaction
 %format

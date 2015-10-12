@@ -5,6 +5,9 @@ output_struct = input_struct;
 do_sizes_match = true;
 for ind = 1:numel(q)
     curr_field = q{ind};
+    if strcmp(curr_field,'is_RO2')
+        continue
+    end
     curr_data = input_struct.(curr_field);
     sz = size(curr_data);
     if min(sz) > 1 %Make sure it's not a matrix
