@@ -1,4 +1,4 @@
-function [T_all,Y,Species_Order,Reaction_Order,Y_eps, S, R] = TOY(kinetics_file,species_struct,other_inputs,hold_fixed,length_of_run,options)
+function [T_all,Y,Species_Order,Reaction_Order,Y_eps, S, R, R_inst] = TOY(kinetics_file,species_struct,other_inputs,hold_fixed,length_of_run,options)
 %TOY.m
 %A Simple shell for a box model that you manually put reactions into.
 % INPUTS:
@@ -27,10 +27,17 @@ end
 
 %% Zeroth: Unpack Options, and 
 
-allowed_names = {'runner','want_to_plot','classes_of_interest'};
+allowed_names = {'runner','want_to_plot','classes_of_interest','k_dil','Bkgd_Conc'};
 Extract_Struct(options,allowed_names,false);
 
-
+%Options dealing with dilution -- currently optional. May become mandatory
+%later
+if ~exist('k_dil','var')
+    k_dil = 1./86400;
+end
+if ~exist('Bkgd_Conc','var')
+    Bkgd_Conc = struct();
+end
 
 %Do a size check on these things
 %Things that can be vectors: species_struct, other_inputs, length_of_run
@@ -92,6 +99,20 @@ if ~isfield(Species_Order,'RO2')
     Species_Order.RO2 = x;
 end
 
+% Add in the dilution reactions:
+if isfield(other_inputs,'mM')
+    mM = other_inputs.mM;
+else
+    mM = 2.45e19;
+    disp('Using a default molecular density of air of 2.45e19 molec/cc');
+end
+[New_Rxn_Data] = Build_Dilution(Rxn_Data,Species_Order,k_dil,mM,Bkgd_Conc);
+clear mM
+
+a = 17;
+Rxn_Data = New_Rxn_Data;
+num_rxns = numel(fieldnames(Rxn_Data));
+
 [Reaction_Order k_cell] = Build_Reaction_Order(Rxn_Data);
 
 [G, G1, G2] = Build_Stoichometry(Rxn_Data,Reaction_Order,Species_Order);
@@ -137,10 +158,6 @@ disp('Loaded Reactions');
 
 %% Then use the species file to build up the concentrations. We recognize ppb_, ppt_
 % and m_
-
-if ~exist('mM','var')
-    mM = 2.45e10;
-end
 
 c_matrix =  zeros(num_species,vector_size);
 allowed_names = {'^ppb_','^ppt_','^m_','is_RO2'};
@@ -287,6 +304,11 @@ for vInd =1:vector_size
     time_already_past = time_already_past + length_of_run(vInd)*3600;
     
 end
+inst_change = [];
+for ind = 1:size(Y,1)
+    inst_change(ind,:) = TOY_Kinetics(T_all(ind),Y(ind,:)',k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind);
+end
+inst_change = inst_change(:,num_species+1:end);
 %%
 %Now we plot the results over time. 
 a = 17;
@@ -379,6 +401,15 @@ for ind = 1:numel(q)
     curr_ind = Reaction_Order.(curr_name);
     R.(curr_name) = Y_eps(:,curr_ind);
 end
+
+q = fieldnames(Reaction_Order);
+R_inst = struct();
+for ind = 1:numel(q)
+    curr_name = q{ind};
+    curr_ind = Reaction_Order.(curr_name);
+    R_inst.(curr_name) = inst_change(:,curr_ind);
+end
+
 
     
 a = 17; 
