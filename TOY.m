@@ -27,7 +27,7 @@ end
 
 %% Zeroth: Unpack Options, and 
 
-allowed_names = {'runner','want_to_plot','classes_of_interest','k_dil','Bkgd_Conc'};
+allowed_names = {'runner','want_to_plot','classes_of_interest','fixed_classes','k_dil','Bkgd_Conc'};
 Extract_Struct(options,allowed_names,false);
 
 %Options dealing with dilution -- currently optional. May become mandatory
@@ -37,6 +37,10 @@ if ~exist('k_dil','var')
 end
 if ~exist('Bkgd_Conc','var')
     Bkgd_Conc = struct();
+end
+
+if ~exist('fixed_classes','var')
+    fixed_classes = struct();
 end
 
 %Do a size check on these things
@@ -113,7 +117,11 @@ else
     mM = 2.45e19;
     disp('Using a default molecular density of air of 2.45e19 molec/cc');
 end
-[New_Rxn_Data] = Build_Dilution(Rxn_Data,Species_Order,k_dil,mM,Bkgd_Conc);
+if k_dil > 0    
+    [New_Rxn_Data] = Build_Dilution(Rxn_Data,Species_Order,k_dil,mM,Bkgd_Conc);
+else
+    New_Rxn_Data = Rxn_Data;
+end
 clear mM
 
 a = 17;
@@ -215,7 +223,7 @@ for cInd = 1:numel(all_m)
     c_matrix(curr_order,:) = q;
 end
 clear all_m
-clear('-regexp', '^m_*');
+clear('-regexp', '^m_.*');
 disp('Loaded Species');
 if ~exist('want_to_plot','var')%If want_to_plot is not a variable, want_to_plot just gets all the species
     want_to_plot = fieldnames(Species_Order);
@@ -231,6 +239,30 @@ for hfInd = 1:numel(hold_fixed)
     curr_species = hold_fixed{hfInd};
     csInd = Species_Order.(curr_species);
     able_to_change(csInd) = 0;
+end
+
+%I also need some way to adjust the concentrations. How do I want to do
+%that?
+if numel(fixed_classes) > 0
+    matrix_fixed_classes = zeros(num_species,numel(fixed_classes));
+    matrix_adj = zeros(num_species,numel(fixed_classes));
+    for ind = 1:numel(fixed_classes)
+        curr_comp = fixed_classes(ind).comp;
+        for cInd = 1:numel(curr_comp)
+            curr_species_name = curr_comp{cInd};
+            matrix_fixed_classes(Species_Order.(curr_species_name),ind) = 1;
+        end
+        curr_adj = fixed_classes(ind).adjust_as;
+        for cInd = 1:numel(curr_adj)
+            curr_species_name = curr_adj{cInd};
+            matrix_adj(Species_Order.(curr_species_name),ind) = 1;
+        end
+        matrix_adj(:,ind) = matrix_adj(:,ind)./sum(matrix_adj(:,ind));
+    end
+    if max(sum(matrix_fixed_classes,2)) > 1
+        error('Can''t have overlapping fixed_classes');
+    end
+    a = 17;
 end
 
 
@@ -267,6 +299,8 @@ for vInd =1:vector_size
    
     %Co = zeros(num_species + num_rxns,1);
     %Co(1:num_species) =  C;
+    
+    
 
 
     %%
@@ -279,13 +313,27 @@ for vInd =1:vector_size
     % Co(1:num_species) = b(end,1:num_species);
     disp('Starting to run the diffeq');
     
+    time_points = [0:5*60: 3600*length_of_run(vInd)];
+    
     if strcmp(runner,'ode45')
         disp('Using ode45. May be slow');
-        [T_curr,Y_curr] = ode45(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind),...
-            [0, 3600*length_of_run(vInd)],Co); %I'm going to regret this, aren't I?
+         if exist('matrix_fixed_classes','var')
+            disp('Using Fixed Classes')
+            [T_curr,Y_curr] = ode45(@(t,C) TOY_Kinetics_Fix_Class(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind,matrix_fixed_classes,matrix_adj),...
+                time_points,Co); %I'm going to regret this, aren't I?
+        else
+            [T_curr,Y_curr] = ode45(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind),...
+                time_points,Co); %I'm going to regret this, aren't I?
+         end
     else
-        [T_curr,Y_curr] = ode15s(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind),...
-            [0, 3600*length_of_run(vInd)],Co); %I'm going to regret this, aren't I?
+        if exist('matrix_fixed_classes','var')
+            disp('Using Fixed Classes')
+            [T_curr,Y_curr] = ode15s(@(t,C) TOY_Kinetics_Fix_Class(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind,matrix_fixed_classes,matrix_adj),...
+                time_points,Co); %I'm going to regret this, aren't I?
+        else
+            [T_curr,Y_curr] = ode15s(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind),...
+                time_points,Co); %I'm going to regret this, aren't I?
+        end
     end
     q = T_curr+5*60;
     %T = [a; q];
@@ -351,14 +399,14 @@ for sbcInd = 1:numel(classes_of_interest)
     end
     curr_name = classes_of_interest(sbcInd).name;
     figure;
-    plot(T_all(time_mask),Y(time_mask,plot_mask));
+    plot(T_all(time_mask),Y(time_mask,plot_mask)./mM.*1e12);
     hold on;
     conserved_sum = sum(Y(time_mask,plot_mask),2);
     if sum(plot_mask) > 1
-        plot(T_all(time_mask),conserved_sum,'-r*');
+        plot(T_all(time_mask),conserved_sum./mM.*1e12,'-r*');
     end
     set(gca,'FontSize',18);
-    xlabel('Time(s)'); ylabel('C (molec/cc)');
+    xlabel('Time(s)'); ylabel('C (ppt)');
     title(curr_name);
     legend(sn(plot_mask),'FontSize',14,'location','EastOutside');
 end
