@@ -1,6 +1,6 @@
 function Cat_Rxn_Data = Build_Dilution(Rxn_Data,Species_Order,k_dil,mM,Bkgd_Conc_Orig)
 %% Step 1: translate the Bkgd_Conc into all being in terms of molecular densities
-disp('Adding Dilution');
+
 
 Bkgd_Conc = struct();
 fn = fieldnames(Bkgd_Conc_Orig);

@@ -27,7 +27,7 @@ end
 
 %% Zeroth: Unpack Options, and 
 
-allowed_names = {'runner','want_to_plot','classes_of_interest','fixed_classes','k_dil','Bkgd_Conc'};
+allowed_names = {'runner','want_to_plot','classes_of_interest','fixed_classes','k_dil','Bkgd_Conc','make_plots','silent','MCM_K'};
 Extract_Struct(options,allowed_names,false);
 
 %Options dealing with dilution -- currently optional. May become mandatory
@@ -38,10 +38,20 @@ end
 if ~exist('Bkgd_Conc','var')
     Bkgd_Conc = struct();
 end
-
+%Other options
 if ~exist('fixed_classes','var')
-    fixed_classes = struct();
+    fixed_classes = struct('name',{},'comp',{});
 end
+if ~exist('make_plots','var')
+    make_plots = true;
+end
+if ~exist('silent','var')
+    silent = false;
+end
+if ~exist('MCM_K','var')
+    MCM_K = false;
+end
+
 
 %Do a size check on these things
 %Things that can be vectors: species_struct, other_inputs, length_of_run
@@ -72,7 +82,6 @@ a = 17;
     
 
 %% First use the provided kinetics and species to build up the framework for this run 
-
 
 a = 17;
 if iscell(kinetics_file)
@@ -118,6 +127,8 @@ else
     disp('Using a default molecular density of air of 2.45e19 molec/cc');
 end
 if k_dil > 0    
+    if ~silent,disp('Adding Dilution'); end
+
     [New_Rxn_Data] = Build_Dilution(Rxn_Data,Species_Order,k_dil,mM,Bkgd_Conc);
 else
     New_Rxn_Data = Rxn_Data;
@@ -130,6 +141,7 @@ num_rxns = numel(fieldnames(Rxn_Data));
 
 [Reaction_Order k_cell] = Build_Reaction_Order(Rxn_Data);
 
+if ~silent, disp('Building Stoichometry'); end
 [G, G1, G2] = Build_Stoichometry(Rxn_Data,Reaction_Order,Species_Order);
 SO = Species_Order;
 num_species = numel(fieldnames(Species_Order));
@@ -144,6 +156,10 @@ if ~exist('mM','var')
     mM = 2.45e19;
     disp('Using a default molecular density of air of 2.45e19 molec/cc');
 end
+if MCM_K
+    Knames = Calc_MCMv331_K(T,mM);
+end
+
 
 %now evaluate the k's
 %k_vector = zeros(num_rxns,1);
@@ -167,10 +183,15 @@ for ind = 1:numel(var_names)
     end
     clear(var_names{ind});
 end
+if MCM_K
+    for ind = 1:numel(Knames)
+        clear(Knames{ind});
+    end
+end
 
-disp('Loaded Reactions');
+if ~silent,disp('Loaded Reactions'); end
 
-
+a = 18;
 %% Then use the species file to build up the concentrations. We recognize ppb_, ppt_
 % and m_
 
@@ -224,7 +245,7 @@ for cInd = 1:numel(all_m)
 end
 clear all_m
 clear('-regexp', '^m_.*');
-disp('Loaded Species');
+if ~silent, disp('Loaded Species'); end
 if ~exist('want_to_plot','var')%If want_to_plot is not a variable, want_to_plot just gets all the species
     want_to_plot = fieldnames(Species_Order);
 end
@@ -311,14 +332,15 @@ for vInd =1:vector_size
     % [a,b] = ode45(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,all_able_to_change,is_RO2_vector,RO2_ind),...
     %     [0, 5*60],Co);
     % Co(1:num_species) = b(end,1:num_species);
-    disp('Starting to run the diffeq');
+    if ~silent, disp('Starting to run the diffeq'); end
     
-    time_points = [0:5*60: 3600*length_of_run(vInd)];
+    time_points = [0:.5*60: 3600*length_of_run(vInd)];
     
     if strcmp(runner,'ode45')
         disp('Using ode45. May be slow');
          if exist('matrix_fixed_classes','var')
-            disp('Using Fixed Classes')
+            if ~silent,  disp('Using Fixed Classes'); end
+           
             [T_curr,Y_curr] = ode45(@(t,C) TOY_Kinetics_Fix_Class(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind,matrix_fixed_classes,matrix_adj),...
                 time_points,Co); %I'm going to regret this, aren't I?
         else
@@ -327,7 +349,7 @@ for vInd =1:vector_size
          end
     else
         if exist('matrix_fixed_classes','var')
-            disp('Using Fixed Classes')
+             if ~silent,  disp('Using Fixed Classes'); end
             [T_curr,Y_curr] = ode15s(@(t,C) TOY_Kinetics_Fix_Class(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind,matrix_fixed_classes,matrix_adj),...
                 time_points,Co); %I'm going to regret this, aren't I?
         else
@@ -367,59 +389,65 @@ inst_change = inst_change(:,num_species+1:end);
 %%
 %Now we plot the results over time. 
 a = 17;
-plot_mask = zeros(1,num_species);
-for wtpInd = 1:numel(want_to_plot)
-    plot_mask(Species_Order.(want_to_plot{wtpInd})) = true;
+if make_plots
+    plot_mask = zeros(1,num_species);
+    for wtpInd = 1:numel(want_to_plot)
+        plot_mask(Species_Order.(want_to_plot{wtpInd})) = true;
+    end
+    plot_mask = plot_mask & max(Y) >= 0;
+    time_mask = T_all>5; %We give it 5 seconds to spin up :P
+    plot(T_all(time_mask),Y(time_mask,plot_mask));
+    set(gca,'FontSize',18);
+    xlabel('Time(s)'); ylabel('C molec/cc');
+    sn = fieldnames(Species_Order);
+    sn = strrep(sn,'_',' ');
+    legend(sn(plot_mask),'FontSize',14,'location','EastOutside');
 end
-plot_mask = plot_mask & max(Y) >= 0;
-time_mask = T_all>5; %We give it 5 seconds to spin up :P
-plot(T_all(time_mask),Y(time_mask,plot_mask));
-set(gca,'FontSize',18);
-xlabel('Time(s)'); ylabel('C molec/cc');
-sn = fieldnames(Species_Order);
-sn = strrep(sn,'_',' ');
-legend(sn(plot_mask),'FontSize',14,'location','EastOutside');
 
 %Now we plot the sub-classes of things that are relevant to us
 if ~exist('classes_of_interest','var')
     classes_of_interest = struct('name',{},'comp',{});
 end
 
-for sbcInd = 1:numel(classes_of_interest)
-    curr_spec = classes_of_interest(sbcInd).comp;
-    plot_mask = zeros(1,num_species);
-    for wtpInd = 1:numel(curr_spec)
-        if ~isfield(Species_Order,curr_spec{wtpInd}), continue; end
-        plot_mask(Species_Order.(curr_spec{wtpInd})) = true;
+if make_plots
+    for sbcInd = 1:numel(classes_of_interest)
+        curr_spec = classes_of_interest(sbcInd).comp;
+        plot_mask = zeros(1,num_species);
+        for wtpInd = 1:numel(curr_spec)
+            if ~isfield(Species_Order,curr_spec{wtpInd}), continue; end
+            plot_mask(Species_Order.(curr_spec{wtpInd})) = true;
+        end
+        if sum(plot_mask & max(Y) > 0) > 0    
+            plot_mask = plot_mask & max(Y) > 0;
+        else
+            plot_mask = plot_mask & max(Y) >= 0;
+        end
+        curr_name = classes_of_interest(sbcInd).name;
+        figure;
+        plot(T_all(time_mask),Y(time_mask,plot_mask)./mM.*1e12);
+        hold on;
+        conserved_sum = sum(Y(time_mask,plot_mask),2);
+        if sum(plot_mask) > 1
+            plot(T_all(time_mask),conserved_sum./mM.*1e12,'-r*');
+        end
+        set(gca,'FontSize',18);
+        xlabel('Time(s)'); ylabel('C (ppt)');
+        title(curr_name);
+        legend(sn(plot_mask),'FontSize',14,'location','EastOutside');
     end
-    if sum(plot_mask & max(Y) > 0) > 0    
-        plot_mask = plot_mask & max(Y) > 0;
-    else
-        plot_mask = plot_mask & max(Y) >= 0;
-    end
-    curr_name = classes_of_interest(sbcInd).name;
-    figure;
-    plot(T_all(time_mask),Y(time_mask,plot_mask)./mM.*1e12);
-    hold on;
-    conserved_sum = sum(Y(time_mask,plot_mask),2);
-    if sum(plot_mask) > 1
-        plot(T_all(time_mask),conserved_sum./mM.*1e12,'-r*');
-    end
-    set(gca,'FontSize',18);
-    xlabel('Time(s)'); ylabel('C (ppt)');
-    title(curr_name);
-    legend(sn(plot_mask),'FontSize',14,'location','EastOutside');
 end
 
 %Now we plot the epsilons:
-integrated_throughput = sum(Y_eps,1);
-cumul_throughput = cumsum(Y_eps,1);
-[c,IX] = sort(integrated_throughput,'descend');
-figure;
-plot(T_all,cumul_throughput(:,IX))
-all_names = fieldnames(Reaction_Order);
-all_names = strrep(all_names,'_',' ');
-legend(all_names(IX),'Fontsize',14,'location','EastOutside')
+if make_plots
+    integrated_throughput = sum(Y_eps,1);
+    cumul_throughput = cumsum(Y_eps,1);
+    [c,IX] = sort(integrated_throughput,'descend');
+    figure;
+    plot(T_all,cumul_throughput(:,IX))
+    all_names = fieldnames(Reaction_Order);
+    all_names = strrep(all_names,'_',' ');
+    legend(all_names(IX),'Fontsize',14,'location','EastOutside')
+end
 %%
 %Now we clean up and save
 clear cInd csInd curr_order curr_rxn curr_sf curr_species curr_species_name

@@ -15,6 +15,9 @@ for ind = 1:size(fixed_classes,2)
     distributed_adj = total_adj.*adj_as(:,ind).*-1;
     new_species_delta = species_delta + distributed_adj;
     delta_C(1:num_species) = new_species_delta;
+    if sum(new_species_delta(fixed_classes(:,ind)==1)) > 1e-8
+        sum(new_species_delta(fixed_classes(:,ind)==1))
+    end
 end
 
 

@@ -1,5 +1,4 @@
 function [G, G1, G2] = Build_Stoichometry(Rxn_Data,Rxn_Order,Species_Order)
-disp('Building Stoichometry')
 all_rxn = fieldnames(Rxn_Order);
 num_rxn = numel(all_rxn);
 
