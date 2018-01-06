@@ -83,6 +83,10 @@ a = 17;
 
 %% First use the provided kinetics and species to build up the framework for this run 
 
+%I now also want to be able to unpack other_inputs to evaluate the reaction yields. So I unpack it,
+%evaluate the k's, and then destroy it, just to cut down on the total mess
+%that this system can make:
+var_names = Extract_Struct(other_inputs,forbidden_names);
 a = 17;
 if iscell(kinetics_file)
     for ind = 1:numel(kinetics_file)
@@ -93,11 +97,21 @@ else
     run(kinetics_file)
 end
 
+for ind = 1:numel(var_names)
+    if strcmp(var_names{ind},'mM')
+        continue
+    end
+    if strcmp(var_names{ind},'T');
+        continue
+    end
+    clear(var_names{ind});
+end
+
 %Add in a section to translate my new reaction format into the old reaction
 %format
 all_new_rxns = who('r2_*');
 for nInd = 1:numel(all_new_rxns)
-    translated_rxn = Translate_Rxn_Inputs(eval(all_new_rxns{nInd}));
+    translated_rxn = Translate_Rxn_Inputs(eval(all_new_rxns{nInd}),other_inputs);
     curr_name = all_new_rxns{nInd};
     new_name = strcat('r_',curr_name(4:end));
     str_to_eval = strcat(new_name,' = translated_rxn;');
@@ -139,7 +153,7 @@ a = 17;
 Rxn_Data = New_Rxn_Data;
 num_rxns = numel(fieldnames(Rxn_Data));
 
-[Reaction_Order k_cell] = Build_Reaction_Order(Rxn_Data);
+[Reaction_Order k_cell is_func func_inputs] = Build_Reaction_Order(Rxn_Data);
 
 if ~silent, disp('Building Stoichometry'); end
 [G, G1, G2] = Build_Stoichometry(Rxn_Data,Reaction_Order,Species_Order);
@@ -163,6 +177,8 @@ end
 
 %now evaluate the k's
 %k_vector = zeros(num_rxns,1);
+[new_k_cell, fancy_ks_cell] = Build_Fancy_Kinetics(k_cell,is_func,func_inputs,Species_Order,other_inputs,vector_size);
+k_cell = new_k_cell;
 k_matrix = zeros(num_rxns,vector_size);
 for rInd = 1:numel(k_cell)
     curr_data = eval(k_cell{rInd});
@@ -316,6 +332,11 @@ yInd = 1;
 for vInd =1:vector_size
     k_vector = k_matrix(:,vInd); %Ok, that's easy. 
     
+    fancy_k_data = fancy_ks_cell;
+    for rInd = 1:size(fancy_ks_cell,1)
+        fancy_k_data{rInd,2} = fancy_ks_cell{rInd,2}{vInd};
+    end
+    
     %c_vector = c_matrix(:,vInd);
    
     %Co = zeros(num_species + num_rxns,1);
@@ -334,26 +355,30 @@ for vInd =1:vector_size
     % Co(1:num_species) = b(end,1:num_species);
     if ~silent, disp('Starting to run the diffeq'); end
     
-    time_points = [0:.5*60: 3600*length_of_run(vInd)];
+    
+    time_points = [0:10: 3600*length_of_run(vInd)];
+    if numel(time_points) > 5000
+        time_points = linspace(0,3600*length_of_run(vInd),1000);
+    end
     
     if strcmp(runner,'ode45')
         disp('Using ode45. May be slow');
          if exist('matrix_fixed_classes','var')
             if ~silent,  disp('Using Fixed Classes'); end
            
-            [T_curr,Y_curr] = ode45(@(t,C) TOY_Kinetics_Fix_Class(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind,matrix_fixed_classes,matrix_adj),...
+            [T_curr,Y_curr] = ode45(@(t,C) TOY_Kinetics_Fix_Class(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind,matrix_fixed_classes,matrix_adj,fancy_k_data),...
                 time_points,Co); %I'm going to regret this, aren't I?
         else
-            [T_curr,Y_curr] = ode45(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind),...
+            [T_curr,Y_curr] = ode45(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind,fancy_k_data),...
                 time_points,Co); %I'm going to regret this, aren't I?
          end
     else
         if exist('matrix_fixed_classes','var')
              if ~silent,  disp('Using Fixed Classes'); end
-            [T_curr,Y_curr] = ode15s(@(t,C) TOY_Kinetics_Fix_Class(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind,matrix_fixed_classes,matrix_adj),...
+            [T_curr,Y_curr] = ode15s(@(t,C) TOY_Kinetics_Fix_Class(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind,matrix_fixed_classes,matrix_adj,fancy_k_data),...
                 time_points,Co); %I'm going to regret this, aren't I?
         else
-            [T_curr,Y_curr] = ode15s(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind),...
+            [T_curr,Y_curr] = ode15s(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind,fancy_k_data),...
                 time_points,Co); %I'm going to regret this, aren't I?
         end
     end
@@ -383,7 +408,7 @@ for vInd =1:vector_size
 end
 inst_change = [];
 for ind = 1:size(Y,1)
-    inst_change(ind,:) = TOY_Kinetics(T_all(ind),Y(ind,:)',k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind);
+    inst_change(ind,:) = TOY_Kinetics(T_all(ind),Y(ind,:)',k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind,fancy_k_data);
 end
 inst_change = inst_change(:,num_species+1:end);
 %%

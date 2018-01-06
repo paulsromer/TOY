@@ -1,4 +1,4 @@
-function [delta_C] = TOY_Kinetics_Fix_Class(t,C,k_vector,G1,G2,G,able_to_change,is_RO2,RO2_ind,fixed_classes,adj_as)
+function [delta_C] = TOY_Kinetics_Fix_Class(t,C,k_vector,G1,G2,G,able_to_change,is_RO2,RO2_ind,fixed_classes,adj_as,fancy_k_data)
 % %Gives the kinetics for this thing. There's a way to only initalize these
 % %variables once isn't there? 
 num_species = numel(able_to_change);

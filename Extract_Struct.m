@@ -13,7 +13,7 @@ end
 q = fieldnames(input_struct);
 is_bad = zeros(1,numel(q));
 for ind = 1:numel(forbidden_names)
-    m = ~cellfun(@isempty,regexp(q,forbidden_names{ind}));
+    m = ~cellfun(@isempty,regexp(q,[forbidden_names{ind}]));
     is_bad(m) = 1;
 end
 

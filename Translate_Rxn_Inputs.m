@@ -1,4 +1,4 @@
-function old_format_r = Translate_Rxn_Inputs(new_format_r,starting_name)
+function old_format_r = Translate_Rxn_Inputs(new_format_r,other_inputs)
 
 %%
 
@@ -16,13 +16,19 @@ C = strsplit(new_format_r.scheme,'->');
 loses = C{1}; gains = C{2};
 reactants = strsplit(loses,'+');
 products = strsplit(gains,'+');
-[loss_name, loss_num] = Process_Reaction_Side(reactants,true);
-[gain_name, gain_num] = Process_Reaction_Side(products,false);
+[loss_name, loss_num] = Process_Reaction_Side(reactants,true,other_inputs);
+[gain_name, gain_num] = Process_Reaction_Side(products,false,other_inputs);
 old_format_r.loss = loss_name;
 old_format_r.gain = struct('name',gain_name,'value',gain_num);
 
 
 old_format_r.ksource = new_format_r.ksource; %That's also easy
+
+%This section isn't part of the original format, adding it here to allow
+%for more complicated k's. 
+if isfield(new_format_r,'func_inputs') 
+    old_format_r.func_inputs = new_format_r.func_inputs;
+end
 
 %The old format I want to match:
 % r_OH_Isoprene = struct('k','1e-10','loss',{{'OH','C5H8'}},...
@@ -34,7 +40,7 @@ old_format_r.ksource = new_format_r.ksource; %That's also easy
 return
 
 
-function [names, nums] = Process_Reaction_Side(scheme_input,is_reac)
+function [names, nums] = Process_Reaction_Side(scheme_input,is_reac,other_inputs)
     names = {};
     nums = {};
     for rInd = 1:numel(scheme_input)
@@ -51,6 +57,10 @@ function [names, nums] = Process_Reaction_Side(scheme_input,is_reac)
             elem_name = C{2};
             elem_stoicheometry = C{1};
             elem_stoicheometry = str2double(elem_stoicheometry);
+            if isnan(elem_stoicheometry)
+                var_names = Extract_Struct(other_inputs,{'^C$','^curr_part$','^elem_name$','elem_stoicheometry','^i$','^is_reac$','^names$','^nums$','^other_inputs$','^rInd$','scheme_input'});
+                elem_stoicheometry = eval(C{1});
+            end
             if elem_stoicheometry ~= 1 && is_reac
                 disp('Unable to deal with inputs that aren''t 1*reactants yet')
                 error('Bad Inputs');

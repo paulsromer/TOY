@@ -1,0 +1,16 @@
+%The NOx Cycle:
+%====================
+r2_j_NO2 = struct('k','jNO2',... %Given as an imput parameter, to include in the model
+    'scheme','NO2 -> 1*NO + 1*O3',...
+    'ksource','CAFS observations');
+
+r2_NO_O3 = struct('k','3.0e-12.*exp(-1500./T)',...
+    'scheme','NO + O3 -> NO2',...
+    'ksource','S&P');
+
+
+%HOx-NOx Loss:
+%==================
+r2_OH_NO2 = struct('k','ThreeBodyK(1.49e-30.*( (T./300).^-1.8 ),2.58e-11,mM)',...
+    'scheme','OH + NO2 ->  HNO3' ,...
+    'ksource','Mollner');
