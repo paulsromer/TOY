@@ -172,6 +172,12 @@ if ~exist('mM','var')
 end
 if MCM_K
     Knames = Calc_MCMv331_K(T,mM);
+    %Ok, need to rotate all of these rate constants
+    for ind = 1:numel(Knames)
+        cx = Knames{ind};
+        str = [cx,'= transpose(',cx,');'];
+        eval(str);
+    end
 end
 
 
@@ -359,6 +365,9 @@ for vInd =1:vector_size
     time_points = [0:10: 3600*length_of_run(vInd)];
     if numel(time_points) > 5000
         time_points = linspace(0,3600*length_of_run(vInd),1000);
+    end
+    if numel(time_points) < 50
+        time_points = linspace(0,3600*length_of_run(vInd),100);
     end
     
     if strcmp(runner,'ode45')
