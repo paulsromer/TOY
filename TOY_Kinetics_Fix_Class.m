@@ -1,6 +1,8 @@
 function [delta_C] = TOY_Kinetics_Fix_Class(t,C,k_vector,G1,G2,G,able_to_change,is_RO2,RO2_ind,fixed_classes,adj_as,fancy_k_data)
-% %Gives the kinetics for this thing. There's a way to only initalize these
-% %variables once isn't there? 
+	% TOY_Kinetics_Fix_Class.m
+	% Sub-function which handles acutally evaluating the differential equations. 
+  % Includes an extra check to handle fixed clases. 
+
 num_species = numel(able_to_change);
 C = C(1:num_species);
 C_forG12 = [C; 1]; %This unfornatuely needs to be there to be a null case. Should still be ok. 

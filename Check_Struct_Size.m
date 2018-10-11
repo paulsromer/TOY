@@ -1,4 +1,6 @@
 function [output_struct, do_sizes_match, vector_size] = Check_Struct_Size(input_struct,vector_size)
+%Check_Struct_Size.m
+%Function to ensure that all structures passed as inputs to TOY have the same dimensions. 	
 
 q = fieldnames(input_struct);
 output_struct = input_struct;

@@ -1,7 +1,8 @@
 function Cat_Rxn_Data = Build_Dilution(Rxn_Data,Species_Order,k_dil,mM,Bkgd_Conc_Orig)
+%Uses the provided background concentrations to build a series of reactions that 
+%represent effective first-order dilution to a fixed background concentration
+
 %% Step 1: translate the Bkgd_Conc into all being in terms of molecular densities
-
-
 Bkgd_Conc = struct();
 fn = fieldnames(Bkgd_Conc_Orig);
 for ind = 1:numel(fn)
@@ -47,4 +48,3 @@ for ind = 1:numel(species_names)
     end     
 end
 
-a = 17;

@@ -1,5 +1,7 @@
 function [Reaction_Order, k_cell, is_func, func_inputs] = Build_Reaction_Order(Wanted_Rxns)
-
+%Build_Reaction_Order.m
+%Processes the kinetics strucutre Wanted_Rxns	
+	
 reaction_names = fieldnames(Wanted_Rxns);
 Reaction_Order = struct();
 k_cell = cell(numel(reaction_names),1);

@@ -1,4 +1,7 @@
 function [G, G1, G2] = Build_Stoichometry(Rxn_Data,Rxn_Order,Species_Order)
+%Uses the information in Rxn_Data to build up the stoichometry matrices G, G1, and G2.
+%G1 and G2 are used to calculate the reaction rates, and G is used to determine the effects of reactions on species concentrations. 
+	
 all_rxn = fieldnames(Rxn_Order);
 num_rxn = numel(all_rxn);
 
@@ -24,7 +27,7 @@ for rInd = 1:num_rxn
         elseif lsInd == 2
            G2(row_ind,Species_Order.(curr_spec)) = 1;  
         else
-            disp('Problem with my system! More than two reactants in a step')
+            disp('TOY can currently only handle 2 kinetics species in a single basic reaction. Replace with a functional reaction.')
         end
     end
     if ~isempty(curr_rxn.gain)
@@ -41,9 +44,5 @@ no_second = find(sum(G2,2)==0);
 G2(no_second,end) = 1;
 no_first = find(sum(G1,2)==0);
 G1(no_first,end) = 1;
-%G1 = G1'; G2 = G2'; 
-%Needs to be this way to multiply well...because we're looking for
-%something different than with G. 
-%Now this part is a little sketchy..modification to G2 to take into account
-%when we don't care about a thing. 
+
 return

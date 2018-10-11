@@ -78,7 +78,6 @@ end
 species_struct = Pad_Struct(species_struct,vector_size);
 other_inputs = Pad_Struct(other_inputs,vector_size);
 length_of_run = repmat(length_of_run./vector_size,1,vector_size);
-a = 17;  
     
 
 %% First use the provided kinetics and species to build up the framework for this run 
@@ -87,7 +86,6 @@ a = 17;
 %evaluate the k's, and then destroy it, just to cut down on the total mess
 %that this system can make:
 var_names = Extract_Struct(other_inputs,forbidden_names);
-a = 17;
 if iscell(kinetics_file)
     for ind = 1:numel(kinetics_file)
         curr_file = kinetics_file{ind};
@@ -149,7 +147,6 @@ else
 end
 clear mM
 
-a = 17;
 Rxn_Data = New_Rxn_Data;
 num_rxns = numel(fieldnames(Rxn_Data));
 
@@ -213,7 +210,6 @@ end
 
 if ~silent,disp('Loaded Reactions'); end
 
-a = 18;
 %% Then use the species file to build up the concentrations. We recognize ppb_, ppt_
 % and m_
 
@@ -284,8 +280,7 @@ for hfInd = 1:numel(hold_fixed)
     able_to_change(csInd) = 0;
 end
 
-%I also need some way to adjust the concentrations. How do I want to do
-%that?
+%Process the classes that are fixed
 if numel(fixed_classes) > 0
     matrix_fixed_classes = zeros(num_species,numel(fixed_classes));
     matrix_adj = zeros(num_species,numel(fixed_classes));
@@ -328,7 +323,8 @@ c_matrix(RO2_ind,:) = sum(c_matrix(is_RO2_vector,:));
 Co = zeros(num_species + num_rxns,1);
 Co(1:num_species) = c_matrix(:,1);
 
-%% This is where I am going to designate that we move back into vector form!
+%% Each step in vector_size is its own set of independent constraints. 
+%Here we build the vectors required to run the differential equations for one step. 
 Y = zeros(0,num_species);
 Y_eps = zeros(0,num_rxns);
 T_all = zeros(0,1);
@@ -343,22 +339,9 @@ for vInd =1:vector_size
         fancy_k_data{rInd,2} = fancy_ks_cell{rInd,2}{vInd};
     end
     
-    %c_vector = c_matrix(:,vInd);
-   
-    %Co = zeros(num_species + num_rxns,1);
-    %Co(1:num_species) =  C;
-    
-    
-
-
     %%
-    %Now do the actual run of the differential equation. We use ode15s, even
-    %though it's slightly less accurate because it is faster. I currently don't
-    %have any sort of instantaneous cutoff thing. Maybe that's for the future.
-    % disp('Five Minute Spin Up');
-    % [a,b] = ode45(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,all_able_to_change,is_RO2_vector,RO2_ind),...
-    %     [0, 5*60],Co);
-    % Co(1:num_species) = b(end,1:num_species);
+    %Now do the actual run of the differential equation. We use ode15s by default, even
+    %though it's slightly less accurate because it is faster. 
     if ~silent, disp('Starting to run the diffeq'); end
     
     
@@ -374,28 +357,24 @@ for vInd =1:vector_size
         disp('Using ode45. May be slow');
          if exist('matrix_fixed_classes','var')
             if ~silent,  disp('Using Fixed Classes'); end
-           
             [T_curr,Y_curr] = ode45(@(t,C) TOY_Kinetics_Fix_Class(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind,matrix_fixed_classes,matrix_adj,fancy_k_data),...
-                time_points,Co); %I'm going to regret this, aren't I?
+                time_points,Co); 
         else
             [T_curr,Y_curr] = ode45(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind,fancy_k_data),...
-                time_points,Co); %I'm going to regret this, aren't I?
+                time_points,Co); 
          end
     else
         if exist('matrix_fixed_classes','var')
              if ~silent,  disp('Using Fixed Classes'); end
             [T_curr,Y_curr] = ode15s(@(t,C) TOY_Kinetics_Fix_Class(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind,matrix_fixed_classes,matrix_adj,fancy_k_data),...
-                time_points,Co); %I'm going to regret this, aren't I?
+                time_points,Co); 
         else
             [T_curr,Y_curr] = ode15s(@(t,C) TOY_Kinetics(t,C,k_vector,G1,G2,G,able_to_change,is_RO2_vector,RO2_ind,fancy_k_data),...
-                time_points,Co); %I'm going to regret this, aren't I?
+                time_points,Co); 
         end
     end
     q = T_curr+5*60;
-    %T = [a; q];
-    %Y_both = [b; Y_both];
-    
-    
+
     %Now I need to do two things:
     %1. Update was Co should be.
     %2. Combine Y_both
@@ -422,7 +401,6 @@ end
 inst_change = inst_change(:,num_species+1:end);
 %%
 %Now we plot the results over time. 
-a = 17;
 if make_plots
     plot_mask = zeros(1,num_species);
     for wtpInd = 1:numel(want_to_plot)
@@ -526,7 +504,3 @@ for ind = 1:numel(q)
     curr_ind = Reaction_Order.(curr_name);
     R_inst.(curr_name) = inst_change(:,curr_ind);
 end
-
-
-    
-a = 17; 

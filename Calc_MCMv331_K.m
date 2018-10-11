@@ -1,4 +1,4 @@
-function Knames = Calc_MCMv331_K(T,mM,H2O)
+function Knames = Calc_MCMv331_K(T,mM,H2O)	
 % function K = MCMv331_K(Met)
 % calculates generic rate constants used in MCMv3.3.1 mechanism.
 %
@@ -20,6 +20,7 @@ function Knames = Calc_MCMv331_K(T,mM,H2O)
 % 20160321 GMW  Fixed some hold-overs from MCMv3.2 (updated to match documentatio now).
 
 % struct2var(Met)
+% Taken from F0AM v3, written by Glenn Wolfe. Included in TOY to allow easy inclusion of MCM rate constants in TOY simulations. 
 
 nk = 33; %number of rate constants
 krx = nan(length(T),nk);

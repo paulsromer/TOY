@@ -1,8 +1,6 @@
 function [species_list] = Build_Species_List(Wanted_Rxns)
 %Takes the structure of structure Wanted_Rxns and uses it to build a list
-%of species that we are going to need to keep track of. I hope it works the
-%way I want it to. I really wish that there was a simple in command for
-%MATLAB. Well, this seems to be working at least. 
+%of species that need to be kept track of. 
 
 rxn_names = fieldnames(Wanted_Rxns);
 all_species = {};

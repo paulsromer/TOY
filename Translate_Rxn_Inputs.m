@@ -1,17 +1,12 @@
 function old_format_r = Translate_Rxn_Inputs(new_format_r,other_inputs)
-
-%%
-
-
-% r_OH_Isoprene = struct('k','1e-10',...
-%     'scheme','1*OH + C5H8 -> 0.31*ci1 + 0.31*tr1 + 0.22*ci2 + 0.09*tr2',... 
-%     'ksource','LIM1');
-% new_format_r = r_OH_Isoprene;
+	%Translate_Rxn_Inputs.m
+	%Convenience code that translates reactions from the new, revised format (much more human-friendly)
+	%to the old format, which is easier for the computer to handle. 
+	%Most of the work is from reading the input scheme (e.g., NO + O3 - NO2) and translating it into to species gained and lost. 
 
 old_format_r = struct();
-old_format_r.k = new_format_r.k; %That's easy.
+old_format_r.k = new_format_r.k; 
 
-%Ok, now we have to do string processing in matlab :(
 C = strsplit(new_format_r.scheme,'->');
 loses = C{1}; gains = C{2};
 reactants = strsplit(loses,'+');
@@ -24,17 +19,11 @@ old_format_r.gain = struct('name',gain_name,'value',gain_num);
 
 old_format_r.ksource = new_format_r.ksource; %That's also easy
 
-%This section isn't part of the original format, adding it here to allow
-%for more complicated k's. 
+%This section isn't part of the original format, but is added here to allow
+%for functional k values. 
 if isfield(new_format_r,'func_inputs') 
     old_format_r.func_inputs = new_format_r.func_inputs;
 end
-
-%The old format I want to match:
-% r_OH_Isoprene = struct('k','1e-10','loss',{{'OH','C5H8'}},...
-%     'gain',struct('name',{'ci1','tr1','ci2','tr2'},'value',{0.31,0.31,0.22,0.09}),...
-%     'ksource','LIM1');
-
 
 
 return

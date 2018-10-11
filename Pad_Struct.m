@@ -1,4 +1,6 @@
 function output_struct = Pad_Struct(input_struct,vector_size)
+% Pad_Struct.m
+%Pads the length of all scalar inputs to match the size of the vector inputs.
 
 q = fieldnames(input_struct);
 output_struct = input_struct;

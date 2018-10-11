@@ -1,7 +1,9 @@
 function [var_names] = Extract_Struct(input_struct,forbidden_names,is_forbidden)
+% Extract_Struct.m
+% Takes as input a structure and assigns the fields as variables in the caller workspace. 
 %input_struct: Structure you want extracted
 %forbidden_names: Names that can't be variables in the caller workspace.
-%   These can be reg-ex's
+%is_forbidden: If yes, run as a black list; if no then forbidden_names is actually a list of allowed names. 
 
 if ~exist('forbidden_names','var')
     forbidden_names = {};
