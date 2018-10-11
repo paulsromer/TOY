@@ -17,5 +17,11 @@ TOY is designed to be a framework for running simple chemical reaction schemes i
 
   TOY can easily handle reactions that are non-linear functions of reaction concentrations, and allows kinetic rate constants to be arbitrary functions chemical species. This feature is especially useful for simulating heterogeneous or particle phase reactions that depend on particle-phase concentrations in non-linear ways. 
   
- ## Setup
+ ## Setting up and using TOY
+ TOY is written in MATLAB and requires MATLAB to run. The contents of this repository should be clones/downloaded and the entire folder added to the MATLAB search path. The core program, and the one to call to initialize a run is called `TOY.m`. 
+ 
+```[T_all,Y,Species_Order,Reaction_Order,Y_eps, S] = TOY(kinetics_file,species_struct,other_inputs,hold_fixed,length_of_run,options)```
+An extremely simple TOY setup example is given in `TOY_Shell.m`, additional setups are given in the `Examples` directory. Examples of the kinetic file setups can be found in the `Kinetics` directory. 
+
+ 
  
